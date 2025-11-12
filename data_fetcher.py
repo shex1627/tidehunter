@@ -170,7 +170,7 @@ class WeatherDataFetcher:
         if not combined_df.empty:
             combined_df = combined_df.sort_values("datetime").reset_index(drop=True)
             # Fill missing values
-            combined_df = combined_df.fillna(method='ffill').fillna(0)
+            combined_df = combined_df.ffill().fillna(0)
 
         return combined_df
 
