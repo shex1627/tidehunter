@@ -198,7 +198,10 @@ class WeatherDataFetcher:
         })
 
     def _generate_dummy_marine_data(self, start_date: datetime, end_date: datetime) -> pd.DataFrame:
-        """Generate dummy marine data for demonstration."""
+        """
+        Generate realistic dummy marine data for demonstration.
+        Includes time-based variations to simulate real weather patterns.
+        """
         import numpy as np
 
         hours = []
@@ -207,12 +210,37 @@ class WeatherDataFetcher:
             hours.append(current)
             current += timedelta(hours=1)
 
-        # Generate realistic-looking random data
-        np.random.seed(42)
-        wave_heights = np.random.uniform(1, 4, len(hours))
-        wave_directions = np.random.uniform(0, 360, len(hours))
-        wind_speeds = np.random.uniform(5, 20, len(hours))
-        wind_directions = np.random.uniform(0, 360, len(hours))
+        # Use time-based seed for variety across different runs
+        time_seed = int(start_date.timestamp()) % 10000
+        np.random.seed(time_seed)
+
+        # Generate realistic weather patterns with daily cycles
+        wave_heights = []
+        wind_speeds = []
+        wind_directions = []
+        wave_directions = []
+
+        # Base values with realistic variation
+        for i, dt in enumerate(hours):
+            hour = dt.hour
+
+            # Wind typically picks up during day (10am-4pm), calmer at night
+            daily_wind_factor = 1.0 + 0.3 * np.sin((hour - 6) * np.pi / 12)
+            base_wind = np.random.uniform(6, 15) * daily_wind_factor
+            wind_speeds.append(max(2, base_wind))  # Min 2 mph wind
+
+            # Waves influenced by wind with some lag
+            wave_factor = 0.8 + 0.4 * np.sin((hour - 8) * np.pi / 12)
+            base_wave = np.random.uniform(1.5, 3.5) * wave_factor
+            wave_heights.append(max(0.5, base_wave))  # Min 0.5 ft waves
+
+            # Prevailing wind direction (NW = 315°) with variation
+            wind_dir = (315 + np.random.uniform(-45, 45)) % 360
+            wind_directions.append(wind_dir)
+
+            # Wave direction similar to wind direction
+            wave_dir = (wind_dir + np.random.uniform(-30, 30)) % 360
+            wave_directions.append(wave_dir)
 
         return pd.DataFrame({
             "datetime": hours,
@@ -221,3 +249,87 @@ class WeatherDataFetcher:
             "wind_speed": wind_speeds,
             "wind_direction": wind_directions
         })
+
+    def fetch_ndbc_buoy_data(self, buoy_id: str) -> Optional[Dict]:
+        """
+        Fetch real-time data from NOAA NDBC buoy.
+
+        Args:
+            buoy_id: NDBC buoy station ID (e.g., "46026" for San Francisco)
+
+        Returns:
+            Dict with current conditions or None if unavailable
+        """
+        # NDBC provides real-time buoy data
+        # Station 46026: San Francisco (37.759 N 122.833 W)
+        # Station 46012: Half Moon Bay (37.361 N 122.881 W)
+        url = f"https://www.ndbc.noaa.gov/data/realtime2/{buoy_id}.txt"
+
+        try:
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+
+            # Parse the data (space-separated values)
+            lines = response.text.strip().split('\n')
+            if len(lines) < 3:
+                return None
+
+            headers = lines[0].split()
+            units = lines[1].split()
+            latest = lines[2].split()
+
+            # Build data dictionary
+            data = {}
+            for i, header in enumerate(headers):
+                if i < len(latest):
+                    try:
+                        value = float(latest[i]) if latest[i] != 'MM' else None
+                        data[header] = value
+                    except ValueError:
+                        data[header] = latest[i]
+
+            # Extract key measurements
+            result = {
+                "wind_speed_mps": data.get("WSPD"),  # m/s
+                "wind_direction": data.get("WDIR"),  # degrees
+                "wave_height_m": data.get("WVHT"),   # meters
+                "dominant_period": data.get("DPD"),  # seconds
+                "atmospheric_pressure": data.get("PRES"),  # hPa
+                "water_temp": data.get("WTMP"),      # Celsius
+            }
+
+            # Convert to imperial units
+            if result["wind_speed_mps"]:
+                result["wind_speed_mph"] = result["wind_speed_mps"] * 2.237  # m/s to mph
+            if result["wave_height_m"]:
+                result["wave_height_ft"] = result["wave_height_m"] * 3.281  # m to ft
+
+            return result
+
+        except Exception as e:
+            print(f"Error fetching NDBC buoy {buoy_id}: {e}")
+            return None
+
+    def get_nearest_buoy(self, lat: float, lon: float) -> Optional[str]:
+        """Get nearest NDBC buoy ID for given coordinates."""
+        # Major buoys (buoy_id: (lat, lon, name))
+        buoys = {
+            "46026": (37.759, -122.833, "San Francisco"),
+            "46012": (37.361, -122.881, "Half Moon Bay"),
+            "46013": (38.238, -123.317, "Bodega Bay"),
+            "46214": (39.225, -123.967, "Point Arena"),
+            "46028": (35.741, -121.884, "Cape San Martin"),
+            "46025": (33.749, -119.053, "Santa Monica Basin"),
+            "46086": (32.491, -118.034, "San Clemente"),
+        }
+
+        min_dist = float('inf')
+        nearest_buoy = None
+
+        for buoy_id, (b_lat, b_lon, name) in buoys.items():
+            dist = ((lat - b_lat) ** 2 + (lon - b_lon) ** 2) ** 0.5
+            if dist < min_dist:
+                min_dist = dist
+                nearest_buoy = buoy_id
+
+        return nearest_buoy

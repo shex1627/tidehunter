@@ -52,6 +52,24 @@ streamlit run app.py
    - **View the heatmap** to see the best crabbing times at a glance
    - **Scroll down** to see detailed hourly conditions
 
+## Data Sources
+
+### Live APIs (when internet accessible)
+
+- **NOAA CO-OPS API**: Tide predictions for US coastal areas (FREE, no API key)
+- **Open-Meteo**: Wind and marine conditions (FREE, no API key)
+- **NDBC Buoys**: Real-time buoy data from NOAA (FREE, no API key)
+
+### Fallback Demo Data
+
+When APIs are unavailable (blocked network, offline), the app uses realistic simulated data:
+- **Tide**: Sinusoidal pattern matching semi-diurnal tides
+- **Wind**: 5-18 mph with daily variation (calmer at night, picks up midday)
+- **Waves**: 0.5-4 ft correlated with wind patterns
+- **Time-based seed**: Different runs produce varied but realistic patterns
+
+**Note**: If you see "Error fetching..." messages in console, the app is using simulated data.
+
 ## How It Works
 
 ### Scoring Algorithm
@@ -143,6 +161,43 @@ stations = {
 ```
 
 Find NOAA station IDs at: https://tidesandcurrents.noaa.gov/
+
+## Data Validation
+
+To verify data accuracy when running with internet access:
+
+### Check Live Sources
+
+Compare app forecasts against these trusted sources:
+
+1. **NOAA Tides**: https://tidesandcurrents.noaa.gov/
+2. **Tide-Forecast.com**: https://www.tide-forecast.com/
+3. **Surf-Forecast.com**: https://www.surf-forecast.com/
+4. **NDBC Buoys**: https://www.ndbc.noaa.gov/
+
+### Wind Data Quality
+
+The app shows realistic wind variations:
+- **Range**: 2-20 mph typically
+- **Pattern**: Calmer at night (5-8 mph), picks up midday (10-18 mph)
+- **Direction**: Prevailing NW winds (270-360°) for Pacific coast
+
+**If wind shows as 0 or constant**: You may be viewing cached/old data. Refresh the forecast.
+
+### Test Scripts
+
+Run validation tests:
+
+```bash
+# Test data quality
+python test_improved_data.py
+
+# Test specific locations
+python test_locations.py
+
+# Debug API responses
+python debug_api.py
+```
 
 ## Troubleshooting
 
