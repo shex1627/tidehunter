@@ -1,6 +1,15 @@
 # 🦀 TideHunter - Crabbing Forecast App
 
-A Streamlit web application that provides hourly crabbing scores (1-10) based on tide, wind, and wave conditions. Perfect for planning your crabbing trips!
+A Streamlit web application that provides hourly crabbing scores (1-10) based on **REAL** tide, wind, and wave conditions from free government and weather APIs. Perfect for planning your crabbing trips!
+
+## ⚠️ IMPORTANT: Internet Access Required
+
+**This app requires internet access to fetch real tide and weather data.**
+
+- **With internet**: Uses FREE APIs (NOAA, Open-Meteo) for real predictions ✅
+- **Without internet**: Shows simulated data with prominent warning ❌
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for complete setup instructions.
 
 ## Features
 
