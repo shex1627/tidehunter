@@ -70,7 +70,7 @@ def remove_location(name: str):
         save_locations()
 
 
-def fetch_and_calculate_scores(location_name: str, days: int = 7) -> pd.DataFrame:
+def fetch_and_calculate_scores(location_name: str, days: int = 7) -> tuple[pd.DataFrame, dict]:
     """
     Fetch weather data and calculate crabbing scores.
 
@@ -79,10 +79,10 @@ def fetch_and_calculate_scores(location_name: str, days: int = 7) -> pd.DataFram
         days: Number of days to forecast
 
     Returns:
-        DataFrame with scores
+        Tuple of (DataFrame with scores, metadata dict)
     """
     if location_name not in st.session_state.locations:
-        return pd.DataFrame()
+        return pd.DataFrame(), {}
 
     location = st.session_state.locations[location_name]
     lat = location["lat"]
@@ -96,16 +96,16 @@ def fetch_and_calculate_scores(location_name: str, days: int = 7) -> pd.DataFram
     end_date = start_date + timedelta(days=days)
 
     with st.spinner(f"Fetching data for {location_name}..."):
-        df = fetcher.fetch_all_data(lat, lon, start_date, end_date)
+        df, metadata = fetcher.fetch_all_data(lat, lon, start_date, end_date)
 
     if df.empty:
         st.warning("No data available for this location.")
-        return pd.DataFrame()
+        return pd.DataFrame(), metadata
 
     # Calculate scores
     df_with_scores = calculator.calculate_dataframe_scores(df)
 
-    return df_with_scores
+    return df_with_scores, metadata
 
 
 def create_heatmap(df: pd.DataFrame):
@@ -303,22 +303,55 @@ def main():
     col1, col2, col3 = st.columns([2, 1, 1])
     with col1:
         if st.button("🔄 Fetch Latest Forecast", type="primary"):
-            st.session_state.forecast_data = fetch_and_calculate_scores(
+            df_result, metadata = fetch_and_calculate_scores(
                 st.session_state.selected_location,
                 forecast_days
             )
+            st.session_state.forecast_data = df_result
+            st.session_state.data_metadata = metadata
 
     # Display forecast data
     if "forecast_data" not in st.session_state or st.session_state.forecast_data.empty:
         st.info("Click 'Fetch Latest Forecast' to load data.")
         # Auto-fetch on first load
-        st.session_state.forecast_data = fetch_and_calculate_scores(
+        df_result, metadata = fetch_and_calculate_scores(
             st.session_state.selected_location,
             forecast_days
         )
+        st.session_state.forecast_data = df_result
+        st.session_state.data_metadata = metadata
 
     if "forecast_data" in st.session_state and not st.session_state.forecast_data.empty:
         df = st.session_state.forecast_data
+        metadata = st.session_state.get("data_metadata", {})
+
+        # Show data source warning if using simulated data
+        if not metadata.get("using_real_data", False):
+            st.error("""
+⚠️ **WARNING: USING SIMULATED DATA - NOT SUITABLE FOR ACTUAL CRABBING TRIPS**
+
+This app is running in an environment that blocks external API requests. The tide, wind, and wave data shown here is **simulated** and **NOT REAL**.
+
+**DO NOT use this data for planning actual crabbing trips!**
+
+**To get real data:**
+1. Deploy this app to a server with internet access (Streamlit Cloud, Heroku, your local machine)
+2. See `DEPLOYMENT.md` for complete instructions
+3. All data sources are FREE and require no API keys
+
+**Data sources when properly deployed:**
+- Tides: NOAA CO-OPS API (official US government tide predictions)
+- Wind: Open-Meteo API (global weather forecasts)
+- Waves: Open-Meteo Marine API
+
+See the README for verification steps to ensure you're getting real data.
+            """)
+        else:
+            st.success(f"""
+✅ **Using Real Data**
+- Tides: {metadata.get('tide_source', 'Unknown')}
+- Marine: {metadata.get('marine_source', 'Unknown')}
+            """)
 
         # Current conditions
         st.header(f"📊 Forecast for {st.session_state.selected_location}")

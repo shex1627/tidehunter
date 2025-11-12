@@ -44,7 +44,7 @@ class WeatherDataFetcher:
 
         return nearest_station
 
-    def fetch_tide_data(self, lat: float, lon: float, start_date: datetime, end_date: datetime) -> pd.DataFrame:
+    def fetch_tide_data(self, lat: float, lon: float, start_date: datetime, end_date: datetime) -> tuple[pd.DataFrame, bool]:
         """
         Fetch tide predictions from NOAA CO-OPS API.
 
@@ -55,7 +55,7 @@ class WeatherDataFetcher:
             end_date: End date for predictions
 
         Returns:
-            DataFrame with tide predictions
+            Tuple of (DataFrame with tide predictions, is_real_data bool)
         """
         station_id = self.get_noaa_station_id(lat, lon)
 
@@ -82,17 +82,17 @@ class WeatherDataFetcher:
                 df["t"] = pd.to_datetime(df["t"])
                 df["v"] = pd.to_numeric(df["v"])
                 df.rename(columns={"t": "datetime", "v": "tide_height"}, inplace=True)
-                return df
+                return df, True  # Real data!
             else:
                 # Return empty dataframe if no data
-                return pd.DataFrame(columns=["datetime", "tide_height"])
+                return pd.DataFrame(columns=["datetime", "tide_height"]), False
 
         except Exception as e:
             print(f"Error fetching tide data: {e}")
             # Return dummy data for demonstration
-            return self._generate_dummy_tide_data(start_date, end_date)
+            return self._generate_dummy_tide_data(start_date, end_date), False
 
-    def fetch_marine_data(self, lat: float, lon: float, start_date: datetime, end_date: datetime) -> pd.DataFrame:
+    def fetch_marine_data(self, lat: float, lon: float, start_date: datetime, end_date: datetime) -> tuple[pd.DataFrame, bool]:
         """
         Fetch wind and wave data from Open-Meteo Marine API.
 
@@ -103,7 +103,7 @@ class WeatherDataFetcher:
             end_date: End date
 
         Returns:
-            DataFrame with marine conditions
+            Tuple of (DataFrame with marine conditions, is_real_data bool)
         """
         params = {
             "latitude": lat,
@@ -128,16 +128,16 @@ class WeatherDataFetcher:
                     "wind_speed": hourly.get("wind_speed_10m", [0] * len(hourly["time"])),
                     "wind_direction": hourly.get("wind_direction_10m", [0] * len(hourly["time"]))
                 })
-                return df
+                return df, True  # Real data!
             else:
-                return pd.DataFrame(columns=["datetime", "wave_height", "wave_direction", "wind_speed", "wind_direction"])
+                return pd.DataFrame(columns=["datetime", "wave_height", "wave_direction", "wind_speed", "wind_direction"]), False
 
         except Exception as e:
             print(f"Error fetching marine data: {e}")
             # Return dummy data for demonstration
-            return self._generate_dummy_marine_data(start_date, end_date)
+            return self._generate_dummy_marine_data(start_date, end_date), False
 
-    def fetch_all_data(self, lat: float, lon: float, start_date: datetime, end_date: datetime) -> pd.DataFrame:
+    def fetch_all_data(self, lat: float, lon: float, start_date: datetime, end_date: datetime) -> tuple[pd.DataFrame, dict]:
         """
         Fetch all weather data (tide, wind, waves) and combine into one DataFrame.
 
@@ -148,13 +148,32 @@ class WeatherDataFetcher:
             end_date: End date
 
         Returns:
-            Combined DataFrame with all weather data
+            Tuple of (Combined DataFrame with all weather data, metadata dict with data source info)
         """
+        metadata = {
+            "using_real_data": False,
+            "tide_source": "simulated",
+            "marine_source": "simulated",
+            "errors": []
+        }
+
         # Fetch tide data
-        tide_df = self.fetch_tide_data(lat, lon, start_date, end_date)
+        tide_df, tide_is_real = self.fetch_tide_data(lat, lon, start_date, end_date)
+
+        # Update metadata based on actual API success
+        if tide_is_real:
+            metadata["tide_source"] = "NOAA CO-OPS API"
+        else:
+            metadata["tide_source"] = "simulated"
 
         # Fetch marine data
-        marine_df = self.fetch_marine_data(lat, lon, start_date, end_date)
+        marine_df, marine_is_real = self.fetch_marine_data(lat, lon, start_date, end_date)
+
+        # Update metadata based on actual API success
+        if marine_is_real:
+            metadata["marine_source"] = "Open-Meteo API"
+        else:
+            metadata["marine_source"] = "simulated"
 
         # Merge dataframes
         if not tide_df.empty and not marine_df.empty:
@@ -172,7 +191,13 @@ class WeatherDataFetcher:
             # Fill missing values
             combined_df = combined_df.ffill().fillna(0)
 
-        return combined_df
+        # Determine if using real data
+        if tide_is_real or marine_is_real:
+            metadata["using_real_data"] = True
+        else:
+            metadata["using_real_data"] = False
+
+        return combined_df, metadata
 
     def _generate_dummy_tide_data(self, start_date: datetime, end_date: datetime) -> pd.DataFrame:
         """Generate dummy tide data for demonstration."""
